@@ -12,7 +12,7 @@ Note: there are several versions of the core app YAML that differ around policy 
 ### 1. Start Minikube
 
 ### 2. Download Kuma and Install the Kuma Control Plane
-* https://kuma.io/docs/0.7.1/installation/kubernetes/
+* https://kuma.io/docs/1.1.6/installation/kubernetes/
 
 ### 3. Create the `kuma-demo` namespace
 ```
