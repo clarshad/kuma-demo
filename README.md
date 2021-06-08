@@ -56,13 +56,3 @@ kubectl apply -f proxy-template.yaml
 # Refresh the page in the browser and you will see successful connectivity to OPA and allow decisions in the logs for both the frontend and backend pods
 ```
 
-## TODO
-* Fine tune the `ProxyTemplate` to only apply to the frontend or backend
-* Add rule to policy that results in allow: false
-
-## Attic
-* Dump the Kuma dataplane config for a pod
-```
-kubectl port-forward <pod> 9901
-curl http://localhost:9901/config_dump
-```
