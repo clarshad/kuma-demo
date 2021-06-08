@@ -1,0 +1,371 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-master
+  namespace: kuma-demo
+  labels:
+    app: postgres
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: master
+        image: kvn0218/postgres:latest
+        env:
+        - name: POSTGRES_USER
+          value: kumademo
+        - name: POSTGRES_PASSWORD
+          value: kumademo
+        - name: POSTGRES_DB
+          value: kumademo
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 150m
+            memory: 256Mi
+        ports:
+        - containerPort: 5432
+      - name: opa
+        image: openpolicyagent/opa:0.23.2-envoy
+        volumeMounts:
+        - readOnly: true
+          mountPath: /config
+          name: opa-config-vol
+        args:
+        - "run"
+        - "--server"
+        - "--config-file=/config/conf.yaml"
+        resources: {}
+      volumes:
+        - name: opa-config-vol
+          configMap:
+            name: opa-envoy-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: kuma-demo
+  labels:
+    app: postgres
+spec:
+  ports:
+  - protocol: TCP
+    port: 5432
+    targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-master
+  namespace: kuma-demo
+  labels:
+    app: redis
+spec:
+  selector:
+    matchLabels:
+      app: redis
+      role: master
+      tier: backend
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: redis
+        role: master
+        tier: backend
+    spec:
+      containers:
+      - name: master
+        image: kvn0218/kuma-redis
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 150m
+            memory: 256Mi
+        ports:
+        - containerPort: 6379
+      - name: opa
+        image: openpolicyagent/opa:0.23.2-envoy
+        volumeMounts:
+        - readOnly: true
+          mountPath: /config
+          name: opa-config-vol
+        args:
+        - "run"
+        - "--server"
+        - "--config-file=/config/conf.yaml"
+        resources: {}
+      volumes:
+        - name: opa-config-vol
+          configMap:
+            name: opa-envoy-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: kuma-demo
+  labels:
+    app: redis
+    role: master
+    tier: backend
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: redis
+    role: master
+    tier: backend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: kuma-demo
+  annotations:
+    3001.service.kuma.io/protocol: "http"
+spec:
+  selector:
+    app: kuma-demo-backend
+  ports:
+  - name: api
+    port: 3001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kuma-demo-backend-v0
+  namespace: kuma-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kuma-demo-backend
+      version: v0
+      env: prod
+  template:
+    metadata:
+      labels:
+        app: kuma-demo-backend
+        version: v0
+        env: prod
+    spec:
+      containers:
+      - image: kvn0218/kuma-demo-be:latest
+        name: kuma-be
+        env:
+        - name: POSTGRES_HOST
+          value: postgres
+        - name: SPECIAL_OFFER
+          value: "false"
+        - name: REDIS_HOST
+          value: redis
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3001
+      - name: opa
+        image: openpolicyagent/opa:0.23.2-envoy
+        volumeMounts:
+        - readOnly: true
+          mountPath: /config
+          name: opa-config-vol
+        args:
+        - "run"
+        - "--server"
+        - "--config-file=/config/conf.yaml"
+        resources: {}
+      volumes:
+        - name: opa-config-vol
+          configMap:
+            name: opa-envoy-config
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: opa-envoy-config
+  namespace: kuma-demo
+data:
+  conf.yaml: |
+    services:
+      - name: styra
+        url: https://expo.styra.com/v1
+        credentials:
+          bearer:
+            token: "DAPXOg0ImMkdFcArh1tnXM4b7wN5vNogPEk1xpM3WVJk3NbrNJV6XVTcjhC47Vb6dx5uCiIGg8IeCWESczEf5ZHPFw"
+    labels:
+      system-id: "a6cbc14f048e4fbd82c6500b0be49f8d"
+      system-type: "envoy"
+    discovery:
+      name: discovery
+      prefix: "/systems/a6cbc14f048e4fbd82c6500b0be49f8d"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kuma-demo-backend-v1
+  namespace: kuma-demo
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: kuma-demo-backend
+      version: v1
+      env: intg
+  template:
+    metadata:
+      labels:
+        app: kuma-demo-backend
+        version: v1
+        env: intg
+    spec:
+      containers:
+      - image: kvn0218/kuma-demo-be:latest
+        name: kuma-be
+        env:
+        - name: POSTGRES_HOST
+          value: postgres
+        - name: REDIS_HOST
+          value: redis
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3001
+      - name: opa
+        image: openpolicyagent/opa:0.23.2-envoy
+        volumeMounts:
+        - readOnly: true
+          mountPath: /config
+          name: opa-config-vol
+        args:
+        - "run"
+        - "--server"
+        - "--config-file=/config/conf.yaml"
+        resources: {}
+      volumes:
+      - name: opa-config-vol
+        configMap:
+          name: opa-envoy-config
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kuma-demo-backend-v2
+  namespace: kuma-demo
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: kuma-demo-backend
+      version: v2
+      env: dev
+  template:
+    metadata:
+      labels:
+        app: kuma-demo-backend
+        version: v2
+        env: dev
+    spec:
+      containers:
+      - image: kvn0218/kuma-demo-be:latest
+        name: kuma-be
+        env:
+        - name: POSTGRES_HOST
+          value: postgres
+        - name: TOTAL_OFFER
+          value: "2"
+        - name: REDIS_HOST
+          value: redis
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3001
+      - name: opa
+        image: openpolicyagent/opa:0.23.2-envoy
+        volumeMounts:
+        - readOnly: true
+          mountPath: /config
+          name: opa-config-vol
+        args:
+        - "run"
+        - "--server"
+        - "--config-file=/config/conf.yaml"
+        resources: {}
+      volumes:
+        - name: opa-config-vol
+          configMap:
+            name: opa-envoy-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: kuma-demo
+  annotations:
+    8080.service.kuma.io/protocol: "http"
+    ingress.kubernetes.io/service-upstream: "true"
+spec:
+  selector:
+    app: kuma-demo-frontend
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kuma-demo-app
+  namespace: kuma-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kuma-demo-frontend
+      version: v8
+      env: prod
+  template:
+    metadata:
+      labels:
+        app: kuma-demo-frontend
+        version: v8
+        env: prod
+    spec:
+      containers:
+      - name: kuma-fe
+        image: kvn0218/kuma-demo-fe:latest
+        args: ["-P", "http://backend:3001"]
+        imagePullPolicy: IfNotPresent
+      - name: opa
+        image: openpolicyagent/opa:0.23.2-envoy
+        volumeMounts:
+        - readOnly: true
+          mountPath: /config
+          name: opa-config-vol
+        args:
+        - "run"
+        - "--server"
+        - "--config-file=/config/conf.yaml"
+        resources: {}
+      volumes:
+        - name: opa-config-vol
+          configMap:
+            name: opa-envoy-config
